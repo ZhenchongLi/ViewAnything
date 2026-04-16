@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "ViewAnything",
+    name: "AnythingView",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "ViewAnything",
-            path: "Sources/ViewAnything",
+            name: "AnythingView",
+            path: "Sources/AnythingView",
             exclude: ["Info.plist"],
             resources: [.process("Resources")]
         ),

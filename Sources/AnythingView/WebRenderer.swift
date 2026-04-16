@@ -582,7 +582,7 @@ class WebRenderer: NSObject, ViewerRenderer, WKNavigationDelegate {
     // MARK: - Docx / Docmod / Doct
 
     private func loadDocxContent(_ filePath: String) {
-        let tmpDocmod = NSTemporaryDirectory() + "ViewAnything-\(UUID().uuidString).docmod"
+        let tmpDocmod = NSTemporaryDirectory() + "AnythingView-\(UUID().uuidString).docmod"
         defer { try? FileManager.default.removeItem(atPath: tmpDocmod) }
         do {
             try DocmodCLI.createDocmod(from: filePath, to: tmpDocmod)

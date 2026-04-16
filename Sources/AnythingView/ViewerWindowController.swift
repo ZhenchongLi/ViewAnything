@@ -26,7 +26,7 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
     private var watcherSource: DispatchSourceFileSystemObject?
     private var reloadDebounceItem: DispatchWorkItem?
-    private let reloadQueue = DispatchQueue(label: "com.viewanything.reload", qos: .userInitiated)
+    private let reloadQueue = DispatchQueue(label: "com.anythingview.reload", qos: .userInitiated)
 
     private var fileExtension: String {
         URL(fileURLWithPath: filePath).pathExtension.lowercased()
@@ -56,7 +56,7 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
         win.title = filename
         win.delegate = self
         win.tabbingMode = .preferred
-        win.tabbingIdentifier = "ViewAnything"
+        win.tabbingIdentifier = "AnythingView"
 
         let r = RendererFactory.renderer(for: fileExtension)
         self.renderer = r
@@ -71,7 +71,7 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
         dropTarget.addSubview(r.view)
         win.contentView = dropTarget
 
-        let toolbar = NSToolbar(identifier: "ViewAnythingToolbar")
+        let toolbar = NSToolbar(identifier: "AnythingViewToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         win.toolbar = toolbar
