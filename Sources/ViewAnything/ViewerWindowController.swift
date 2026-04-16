@@ -1,4 +1,5 @@
 import Cocoa
+import PDFKit
 import WebKit
 
 private extension NSToolbarItem.Identifier {
@@ -9,6 +10,7 @@ private extension NSToolbarItem.Identifier {
 }
 
 class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKNavigationDelegate {
+    static let pdfExtensions: Set<String> = ["pdf"]
     static let docExtensions: Set<String> = ["docmod", "doct", "docx"]
     static let htmlExtensions: Set<String> = ["html", "htm"]
     static let markdownExtensions: Set<String> = ["md", "markdown"]
@@ -33,7 +35,7 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
         // Other
         "lock", "sum", "mod",
     ]
-    static let supportedExtensions: Set<String> = docExtensions.union(htmlExtensions).union(markdownExtensions).union(codeExtensions)
+    static let supportedExtensions: Set<String> = pdfExtensions.union(docExtensions).union(htmlExtensions).union(markdownExtensions).union(codeExtensions)
 
     static let minZoom: CGFloat = 0.5
     static let maxZoom: CGFloat = 3.0
@@ -62,6 +64,7 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
 
     private(set) var window: NSWindow?
     private var webView: WKWebView?
+    private var pdfView: PDFView?
     private var zoomLevel: CGFloat = 1.0
     private weak var zoomLabelButton: NSButton?
     private let lock = NSLock()
@@ -92,14 +95,10 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
         }
     }
 
+    private var isPdf: Bool { Self.pdfExtensions.contains(fileExtension) }
+
     func showWindow(_ sender: Any?) {
         let filename = URL(fileURLWithPath: filePath).lastPathComponent
-
-        let config = WKWebViewConfiguration()
-        let wv = WKWebView(frame: .zero, configuration: config)
-        wv.autoresizingMask = [.width, .height]
-        wv.navigationDelegate = self
-        self.webView = wv
 
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 900, height: 900)
         let width = min(900.0, screen.width * 0.8)
@@ -111,9 +110,24 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
         win.isReleasedWhenClosed = false
         win.title = filename
         win.delegate = self
-        win.contentView = wv
         win.tabbingMode = .preferred
         win.tabbingIdentifier = "ViewAnything"
+
+        if isPdf {
+            let pv = PDFView(frame: .zero)
+            pv.autoresizingMask = [.width, .height]
+            pv.autoScales = true
+            pv.displayMode = .singlePageContinuous
+            self.pdfView = pv
+            win.contentView = pv
+        } else {
+            let config = WKWebViewConfiguration()
+            let wv = WKWebView(frame: .zero, configuration: config)
+            wv.autoresizingMask = [.width, .height]
+            wv.navigationDelegate = self
+            self.webView = wv
+            win.contentView = wv
+        }
 
         let toolbar = NSToolbar(identifier: "ViewAnythingToolbar")
         toolbar.delegate = self
@@ -126,8 +140,12 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
         self.window = win
 
         startWatching()
-        reloadQueue.async { [weak self] in
-            self?.loadContent()
+        if isPdf {
+            loadPdfFile()
+        } else {
+            reloadQueue.async { [weak self] in
+                self?.loadContent()
+            }
         }
     }
 
@@ -145,8 +163,12 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
         reloadDebounceItem?.cancel()
         stopWatching()
         startWatching()
-        reloadQueue.async { [weak self] in
-            self?.loadContent()
+        if isPdf {
+            loadPdfFile()
+        } else {
+            reloadQueue.async { [weak self] in
+                self?.loadContent()
+            }
         }
     }
 
@@ -228,12 +250,16 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
     private func setZoom(_ value: CGFloat) {
         let snapped = (value * 10).rounded() / 10
         zoomLevel = min(max(snapped, Self.minZoom), Self.maxZoom)
-        webView?.pageZoom = zoomLevel
-        if Self.htmlExtensions.contains(fileExtension) {
-            webView?.evaluateJavaScript(
-                "window.__vaSetZoom && window.__vaSetZoom(\(zoomLevel))",
-                completionHandler: nil
-            )
+        if isPdf {
+            pdfView?.scaleFactor = zoomLevel
+        } else {
+            webView?.pageZoom = zoomLevel
+            if Self.htmlExtensions.contains(fileExtension) {
+                webView?.evaluateJavaScript(
+                    "window.__vaSetZoom && window.__vaSetZoom(\(zoomLevel))",
+                    completionHandler: nil
+                )
+            }
         }
         zoomLabelButton?.title = zoomLabelText
     }
@@ -335,6 +361,16 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, WKN
             loadDoctContent(extractedDir: extractedDir)
         } else {
             loadDocmodContent(extractedDir: extractedDir)
+        }
+    }
+
+    private func loadPdfFile() {
+        guard let document = PDFDocument(url: URL(fileURLWithPath: filePath)) else {
+            // Fall back to error in a web view if PDF can't be loaded
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.pdfView?.document = document
         }
     }
 
