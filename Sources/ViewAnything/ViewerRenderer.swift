@@ -23,12 +23,16 @@ enum RendererFactory {
         if PDFRenderer.supportedExtensions.contains(ext) {
             return PDFRenderer()
         }
+        if ImageRenderer.supportedExtensions.contains(ext) {
+            return ImageRenderer()
+        }
         // Default: web renderer handles everything else
         return WebRenderer()
     }
 
     static var allSupportedExtensions: Set<String> {
         PDFRenderer.supportedExtensions
+            .union(ImageRenderer.supportedExtensions)
             .union(WebRenderer.supportedExtensions)
     }
 }
