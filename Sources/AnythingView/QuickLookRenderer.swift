@@ -5,8 +5,19 @@ import Quartz
 /// Handles pptx, xlsx, keynote, numbers, and other Quick Look-supported formats.
 class QuickLookRenderer: ViewerRenderer {
     static let supportedExtensions: Set<String> = [
+        // Office / iWork
         "pptx", "ppt", "xlsx", "xls",
         "key", "numbers", "pages",
+        // Audio
+        "mp3", "m4a", "wav", "flac", "aac", "aiff",
+        // Video
+        "mp4", "mov", "m4v", "avi",
+        // 3D models
+        "stl", "obj", "usdz", "usd", "dae",
+        // Fonts
+        "ttf", "otf", "ttc",
+        // Communication
+        "vcf", "ics",
     ]
 
     private let previewView: QLPreviewView
