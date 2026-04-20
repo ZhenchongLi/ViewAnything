@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=AnythingView
+GenericName=Document Viewer
+Comment=View anything, locally, fast, faithful
+Exec=anythingview %F
+Icon=anythingview
+Terminal=false
+Categories=Office;Viewer;Graphics;AudioVideo;
+StartupNotify=true
+MimeType=application/pdf;image/png;image/jpeg;image/gif;image/webp;image/tiff;image/bmp;image/vnd.microsoft.icon;image/svg+xml;text/html;text/markdown;text/plain;text/x-python;text/x-c;text/x-c++src;text/x-rust;text/x-go;application/json;application/xml;application/x-yaml;audio/mpeg;audio/mp4;audio/flac;audio/ogg;audio/x-wav;video/mp4;video/quicktime;video/x-matroska;video/webm;
+Keywords=pdf;markdown;document;viewer;image;code;

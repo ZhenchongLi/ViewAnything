@@ -5,3 +5,9 @@
 xcuserdata/
 DerivedData/
 AnythingView.app.zip
+
+# Rust / Linux build
+linux/target/
+
+# Local Claude Code session state
+.claude/
