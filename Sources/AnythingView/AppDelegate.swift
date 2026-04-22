@@ -6,7 +6,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var hasOpenedFile = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // If no file was opened via double-click, show a file picker
+        // Accept file paths from command line (skip executable path at index 0)
+        let args = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
+        for arg in args where FileManager.default.fileExists(atPath: arg) {
+            hasOpenedFile = true
+            openDocument(at: arg)
+        }
+        // If no file was opened via double-click or argv, show a file picker
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.hasOpenedFile else { return }
             self.showOpenPanel()

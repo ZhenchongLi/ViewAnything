@@ -46,6 +46,22 @@ class WebRenderer: NSObject, ViewerRenderer, WKNavigationDelegate {
         return content
     }()
 
+    static let docxPreviewScript: String = {
+        guard let url = Bundle.module.url(forResource: "docx-preview.min", withExtension: "js"),
+              let content = try? String(contentsOf: url, encoding: .utf8) else {
+            return ""
+        }
+        return content
+    }()
+
+    static let jszipScript: String = {
+        guard let url = Bundle.module.url(forResource: "jszip.min", withExtension: "js"),
+              let content = try? String(contentsOf: url, encoding: .utf8) else {
+            return ""
+        }
+        return content
+    }()
+
     private let webView: WKWebView
     private let lock = NSLock()
     private var _tempDir: String?
@@ -582,17 +598,79 @@ class WebRenderer: NSObject, ViewerRenderer, WKNavigationDelegate {
     // MARK: - Docx / Docmod / Doct
 
     private func loadDocxContent(_ filePath: String) {
-        let tmpDocmod = NSTemporaryDirectory() + "AnythingView-\(UUID().uuidString).docmod"
-        defer { try? FileManager.default.removeItem(atPath: tmpDocmod) }
-        do {
-            try DocmodCLI.createDocmod(from: filePath, to: tmpDocmod)
-            let extractedDir = try ZipExtractor.extract(zipPath: tmpDocmod)
-            self.tempDir = extractedDir
-            loadDocmodContent(filePath, extractedDir: extractedDir)
-        } catch let error as DocmodCLI.CLIError {
-            showError(error.errorDescription ?? "docmod not found")
-        } catch {
-            showError("Unexpected error: \(error.localizedDescription)")
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else {
+            showError("Failed to read docx file")
+            return
+        }
+        let base64 = data.base64EncodedString()
+
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="UTF-8">
+        <meta name="color-scheme" content="light">
+        <style>
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: #e5e7eb; }
+            #container { padding: 24px 0; min-height: 100vh; }
+            .docx-wrapper { background: transparent !important; padding: 0 !important; }
+            .docx-wrapper > section.docx { box-shadow: 0 2px 8px rgba(0,0,0,0.12); margin: 0 auto 16px; }
+            #status { position: fixed; top: 12px; right: 16px; z-index: 9999;
+                      padding: 6px 12px; font: 12px -apple-system, sans-serif;
+                      background: rgba(0,0,0,0.7); color: #fff; border-radius: 4px;
+                      backdrop-filter: blur(8px); }
+            #status:empty { display: none; }
+            #status.error { background: #b91c1c; }
+        </style>
+        <script>\(Self.jszipScript)</script>
+        <script>\(Self.docxPreviewScript)</script>
+        </head>
+        <body>
+        <div id="status">加载中…</div>
+        <div id="container"></div>
+        <script>
+        (function() {
+            var status = document.getElementById('status');
+            var container = document.getElementById('container');
+            var b64 = "\(base64)";
+            try {
+                var bin = atob(b64);
+                var len = bin.length;
+                var bytes = new Uint8Array(len);
+                for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+                var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                docx.renderAsync(blob, container, null, {
+                    className: 'docx',
+                    inWrapper: true,
+                    breakPages: true,
+                    ignoreLastRenderedPageBreak: true,
+                    experimental: true,
+                    trimXmlDeclaration: true,
+                    renderHeaders: true,
+                    renderFooters: true,
+                    renderFootnotes: true,
+                    renderEndnotes: true,
+                    renderComments: true,
+                    renderChanges: true,
+                }).then(function() {
+                    status.textContent = '';
+                }).catch(function(e) {
+                    status.className = 'error';
+                    status.textContent = '渲染失败: ' + (e && e.message ? e.message : e);
+                });
+            } catch (e) {
+                status.className = 'error';
+                status.textContent = '加载失败: ' + (e && e.message ? e.message : e);
+            }
+        })();
+        </script>
+        </body>
+        </html>
+        """
+
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.loadHTMLString(html, baseURL: nil)
         }
     }
 
