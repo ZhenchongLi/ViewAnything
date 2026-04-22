@@ -70,6 +70,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func reload(_ sender: Any?) { activeController()?.reload(sender) }
 
+    // MARK: - Find
+
+    @objc func performFind(_ sender: Any?) { activeController()?.performFind(sender) }
+    @objc func findNext(_ sender: Any?) { activeController()?.findNext(sender) }
+    @objc func findPrevious(_ sender: Any?) { activeController()?.findPrevious(sender) }
+
     private func activeController() -> ViewerWindowController? {
         guard let key = NSApp.keyWindow else { return nil }
         return windows.first { $0.window === key }
@@ -87,6 +93,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
            menuItem.action == #selector(actualSize(_:)) ||
            menuItem.action == #selector(reload(_:)) {
             return activeController() != nil
+        }
+        if menuItem.action == #selector(performFind(_:)) ||
+           menuItem.action == #selector(findNext(_:)) ||
+           menuItem.action == #selector(findPrevious(_:)) {
+            return activeController()?.supportsFind == true
         }
         return true
     }

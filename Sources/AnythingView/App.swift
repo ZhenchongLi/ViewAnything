@@ -50,6 +50,16 @@ struct AnythingViewApp {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+
+        let findMenu = NSMenu(title: "Find")
+        let findItem = editMenu.addItem(withTitle: "Find", action: nil, keyEquivalent: "")
+        editMenu.setSubmenu(findMenu, for: findItem)
+        findMenu.addItem(withTitle: "Find…", action: #selector(AppDelegate.performFind(_:)), keyEquivalent: "f")
+        let findNextItem = findMenu.addItem(withTitle: "Find Next", action: #selector(AppDelegate.findNext(_:)), keyEquivalent: "g")
+        findNextItem.keyEquivalentModifierMask = [.command]
+        let findPrevItem = findMenu.addItem(withTitle: "Find Previous", action: #selector(AppDelegate.findPrevious(_:)), keyEquivalent: "g")
+        findPrevItem.keyEquivalentModifierMask = [.command, .shift]
 
         // View menu
         let viewMenuItem = NSMenuItem()

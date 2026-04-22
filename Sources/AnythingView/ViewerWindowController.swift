@@ -24,6 +24,9 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private var zoomLevel: CGFloat = 1.0
     private weak var zoomLabelButton: NSButton?
 
+    private var findBar: FindBarView?
+    private var rendererContainer: NSView?
+
     private var watcherSource: DispatchSourceFileSystemObject?
     private var reloadDebounceItem: DispatchWorkItem?
     private let reloadQueue = DispatchQueue(label: "com.anythingview.reload", qos: .userInitiated)
@@ -66,9 +69,15 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
         dropTarget.onDrop = { [weak self] paths in
             self?.onOpenFiles?(paths)
         }
-        r.view.frame = dropTarget.bounds
+
+        // Renderer lives inside a container so the find bar can be inserted above it.
+        let container = NSView(frame: dropTarget.bounds)
+        container.autoresizingMask = [.width, .height]
+        r.view.frame = container.bounds
         r.view.autoresizingMask = [.width, .height]
-        dropTarget.addSubview(r.view)
+        container.addSubview(r.view)
+        dropTarget.addSubview(container)
+        self.rendererContainer = container
         win.contentView = dropTarget
 
         let toolbar = NSToolbar(identifier: "AnythingViewToolbar")
@@ -226,6 +235,80 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
         return nil
     }
 
+    // MARK: - Find
+
+    @objc func performFind(_ sender: Any?) {
+        showFindBar()
+    }
+
+    @objc func findNext(_ sender: Any?) {
+        triggerFind(forward: true)
+    }
+
+    @objc func findPrevious(_ sender: Any?) {
+        triggerFind(forward: false)
+    }
+
+    var supportsFind: Bool { renderer is SupportsFind }
+
+    private func showFindBar() {
+        guard let container = rendererContainer, let parent = container.superview else { return }
+
+        if let bar = findBar {
+            bar.focusInput()
+            return
+        }
+
+        let barHeight = FindBarView.preferredHeight
+        let bar = FindBarView(frame: NSRect(x: 0,
+                                            y: parent.bounds.height - barHeight,
+                                            width: parent.bounds.width,
+                                            height: barHeight))
+        bar.autoresizingMask = [.width, .minYMargin]
+        bar.delegate = self
+        parent.addSubview(bar)
+
+        var f = container.frame
+        f.size.height = parent.bounds.height - barHeight
+        container.frame = f
+
+        findBar = bar
+        bar.focusInput()
+    }
+
+    private func hideFindBar() {
+        guard let bar = findBar, let container = rendererContainer, let parent = container.superview else { return }
+        bar.removeFromSuperview()
+        container.frame = parent.bounds
+        findBar = nil
+        window?.makeFirstResponder(renderer?.view)
+    }
+
+    private func triggerFind(forward: Bool) {
+        guard let bar = findBar else {
+            showFindBar()
+            return
+        }
+        let q = bar.query
+        guard !q.isEmpty else {
+            bar.focusInput()
+            return
+        }
+        guard let finder = renderer as? SupportsFind else {
+            bar.setStatus("Not supported", isError: true)
+            return
+        }
+        finder.performFind(query: q, forward: forward) { [weak bar] found in
+            DispatchQueue.main.async {
+                if found {
+                    bar?.setStatus("")
+                } else {
+                    bar?.setStatus("Not found", isError: true)
+                }
+            }
+        }
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
@@ -236,5 +319,15 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
             webRenderer.cleanup()
         }
         onClose?(self)
+    }
+}
+
+extension ViewerWindowController: FindBarViewDelegate {
+    func findBar(_ bar: FindBarView, didSearch query: String, forward: Bool) {
+        triggerFind(forward: forward)
+    }
+
+    func findBarDidRequestClose(_ bar: FindBarView) {
+        hideFindBar()
     }
 }

@@ -16,6 +16,11 @@ protocol ViewerRenderer: AnyObject {
     func setZoom(_ level: CGFloat)
 }
 
+/// Renderers that support in-document text search.
+protocol SupportsFind: AnyObject {
+    func performFind(query: String, forward: Bool, completion: @escaping (Bool) -> Void)
+}
+
 /// Returns the appropriate renderer for a file extension.
 enum RendererFactory {
     static func renderer(for extension: String) -> ViewerRenderer {

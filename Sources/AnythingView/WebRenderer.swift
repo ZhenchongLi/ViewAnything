@@ -3,7 +3,7 @@ import WebKit
 
 /// Renders documents using WKWebView.
 /// Handles docx, docmod, doct, html, markdown, and code files.
-class WebRenderer: NSObject, ViewerRenderer, WKNavigationDelegate {
+class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate {
     static let docExtensions: Set<String> = ["docmod", "doct", "docx"]
     static let htmlExtensions: Set<String> = ["html", "htm"]
     static let markdownExtensions: Set<String> = ["md", "markdown"]
@@ -145,6 +145,18 @@ class WebRenderer: NSObject, ViewerRenderer, WKNavigationDelegate {
                 "window.__vaSetZoom && window.__vaSetZoom(\(level))",
                 completionHandler: nil
             )
+        }
+    }
+
+    // MARK: - Find
+
+    func performFind(query: String, forward: Bool, completion: @escaping (Bool) -> Void) {
+        let config = WKFindConfiguration()
+        config.backwards = !forward
+        config.wraps = true
+        config.caseSensitive = false
+        webView.find(query, configuration: config) { result in
+            completion(result.matchFound)
         }
     }
 
