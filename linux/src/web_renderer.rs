@@ -26,6 +26,10 @@ impl WebRenderer {
             "html", "htm",
             // Markdown
             "md", "markdown",
+            // LaTeX (compiled via tectonic)
+            "tex",
+            // LaTeX auxiliary (syntax highlight only)
+            "sty", "cls", "bib", "bbl",
             // Code — languages
             "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
             "kt", "scala", "c", "h", "cpp", "hpp", "m", "mm", "lua", "r", "pl",
@@ -104,7 +108,183 @@ impl WebRenderer {
             "rst" | "txt" | "log" => "plaintext".into(),
             "patch" => "diff".into(),
             "proto" => "protobuf".into(),
+            "tex" | "sty" | "cls" => "latex".into(),
+            "bib" | "bbl" => "tex".into(),
             other => other.to_string(),
+        }
+    }
+
+    fn tectonic_path() -> Option<String> {
+        let candidates = [
+            "/usr/local/bin/tectonic",
+            "/usr/bin/tectonic",
+        ];
+        for c in &candidates {
+            if std::fs::metadata(c).map(|m| m.is_file()).unwrap_or(false) {
+                return Some(c.to_string());
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let local = format!("{}/.local/bin/tectonic", home);
+            if std::fs::metadata(&local).map(|m| m.is_file()).unwrap_or(false) {
+                return Some(local);
+            }
+        }
+        None
+    }
+
+    fn tex_source_html(escaped_source: &str, status_msg: &str, is_error: bool) -> String {
+        let status_color = if is_error { "#b91c1c" } else { "#888" };
+        let status_html = if status_msg.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r#"<div style="position:fixed;top:12px;right:16px;z-index:9999;padding:6px 12px;font:12px system-ui,sans-serif;color:{};background:rgba(0,0,0,0.06);border-radius:4px;max-width:60%;white-space:pre-wrap;">{}</div>"#,
+                status_color,
+                html_escape::encode_text(status_msg)
+            )
+        };
+        format!(
+            r#"<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
+<style>
+body{{margin:0;padding:20px 24px;font-family:"JetBrains Mono","Fira Code",Menlo,monospace;font-size:13px;background:#f8f9fa;color:#1a1a1a;}}
+pre{{margin:0;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;tab-size:4;}}
+.hljs{{display:block;overflow-x:auto;padding:0;color:#333;background:transparent;}}
+.hljs-comment,.hljs-quote{{color:#998;font-style:italic;}}
+.hljs-keyword,.hljs-selector-tag{{color:#333;font-weight:bold;}}
+.hljs-string,.hljs-doctag{{color:#d14;}}
+.hljs-title,.hljs-section{{color:#900;font-weight:bold;}}
+.hljs-built_in{{color:#0086b3;}}
+@media(prefers-color-scheme:dark){{
+body{{background:#1e1e1e;color:#d4d4d4;}}
+.hljs{{color:#abb2bf;}}
+.hljs-keyword{{color:#c678dd;}}
+.hljs-string{{color:#98c379;}}
+.hljs-built_in{{color:#e6c07b;}}
+}}
+</style>
+<script>{hljs}</script>
+</head><body>
+{status}
+<pre><code class="language-latex">{source}</code></pre>
+<script>if(window.hljs){{hljs.highlightAll();}}</script>
+</body></html>"#,
+            hljs = HIGHLIGHT_JS,
+            status = status_html,
+            source = escaped_source,
+        )
+    }
+
+    fn tex_pdf_html(escaped_source: &str, pdf_uri: &str) -> String {
+        format!(
+            r#"<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#fff;}}
+iframe{{width:100%;height:100vh;border:none;display:block;}}
+#source{{display:none;margin:0;padding:20px 24px;white-space:pre-wrap;word-wrap:break-word;
+        font-family:"JetBrains Mono","Fira Code",Menlo,monospace;font-size:13px;line-height:1.5;
+        tab-size:4;color:#1a1a1a;background:#f8f9fa;min-height:100vh;}}
+.toggle-btn{{position:fixed;top:12px;right:16px;z-index:9999;padding:4px 12px;
+            border:1px solid rgba(0,0,0,0.15);border-radius:6px;
+            background:rgba(255,255,255,0.9);color:#333;
+            font-size:12px;font-family:system-ui,sans-serif;cursor:pointer;
+            backdrop-filter:blur(8px);}}
+.toggle-btn:hover{{background:rgba(240,240,240,0.95);}}
+.hljs{{display:block;overflow-x:auto;padding:0;color:#333;background:transparent;}}
+.hljs-comment,.hljs-quote{{color:#998;font-style:italic;}}
+.hljs-keyword,.hljs-selector-tag{{color:#333;font-weight:bold;}}
+.hljs-string,.hljs-doctag{{color:#d14;}}
+.hljs-title,.hljs-section{{color:#900;font-weight:bold;}}
+.hljs-built_in{{color:#0086b3;}}
+@media(prefers-color-scheme:dark){{
+body{{background:#1a1a1a;}}
+#source{{color:#d4d4d4;background:#1e1e1e;}}
+.toggle-btn{{background:rgba(40,40,40,0.9);border-color:rgba(255,255,255,0.15);color:#ccc;}}
+.hljs{{color:#abb2bf;}}
+.hljs-keyword{{color:#c678dd;}}
+.hljs-string{{color:#98c379;}}
+.hljs-built_in{{color:#e6c07b;}}
+}}
+</style>
+<script>{hljs}</script>
+</head><body>
+<button class="toggle-btn" onclick="toggle()">&lt;/&gt; Source</button>
+<iframe id="preview" src="{pdf}"></iframe>
+<pre id="source"><code class="language-latex">{source}</code></pre>
+<script>
+var showing='preview';
+function toggle(){{
+var p=document.getElementById('preview');
+var s=document.getElementById('source');
+var btn=document.querySelector('.toggle-btn');
+if(showing==='preview'){{p.style.display='none';s.style.display='block';btn.textContent='PDF';showing='source';if(window.hljs)hljs.highlightAll();}}
+else{{s.style.display='none';p.style.display='block';btn.innerHTML='&lt;/&gt; Source';showing='preview';}}
+}}
+</script>
+</body></html>"#,
+            hljs = HIGHLIGHT_JS,
+            pdf = pdf_uri,
+            source = escaped_source,
+        )
+    }
+
+    fn load_tex_file(&self, path: &Path) {
+        let source = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => { self.show_error(&format!("Failed to read file: {}", e)); return; }
+        };
+        let escaped = html_escape::encode_text(&source).to_string();
+
+        // Subfile check — no \begin{document} means it's meant to be \input'd
+        if !source.contains(r"\begin{document}") {
+            let html = Self::tex_source_html(&escaped, "Subfile (no \\begin{document}) — source only", false);
+            self.webview.load_html(&html, None);
+            return;
+        }
+
+        let tectonic = match Self::tectonic_path() {
+            Some(p) => p,
+            None => {
+                let html = Self::tex_source_html(
+                    &escaped,
+                    "tectonic not found — install: cargo install tectonic  or  apt install tectonic",
+                    true,
+                );
+                self.webview.load_html(&html, None);
+                return;
+            }
+        };
+
+        // Show source + "Compiling…" while tectonic runs
+        self.webview.load_html(&Self::tex_source_html(&escaped, "Compiling\u{2026}", false), None);
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+        let tmp_dir = std::env::temp_dir().join(format!("anyview-tex-{}", unique));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+
+        let output = std::process::Command::new(&tectonic)
+            .args(["-Z", "continue-on-errors", "--outdir", tmp_dir.to_str().unwrap_or("")])
+            .arg(path)
+            .output();
+
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+        let pdf_path = tmp_dir.join(format!("{}.pdf", stem));
+
+        if pdf_path.exists() {
+            let pdf_uri = format!("file://{}", pdf_path.to_string_lossy());
+            let html = Self::tex_pdf_html(&escaped, &pdf_uri);
+            self.webview.load_html(&html, None);
+        } else {
+            let err_msg = output
+                .ok()
+                .and_then(|o| String::from_utf8(o.stderr).ok())
+                .unwrap_or_else(|| "Compilation failed".to_string());
+            let html = Self::tex_source_html(&escaped, err_msg.trim(), true);
+            self.webview.load_html(&html, None);
         }
     }
 
@@ -425,6 +605,7 @@ impl Renderer for WebRenderer {
             "docmod" | "doct" => self.load_docmod_file(path),
             "html" | "htm" => self.load_html_file(path),
             "md" | "markdown" => self.load_markdown_file(path),
+            "tex" => self.load_tex_file(path),
             _ => self.load_code_file(path),
         }
     }
