@@ -2,6 +2,19 @@ import Cocoa
 import PDFKit
 import WebKit
 
+private class AnyViewWebView: WKWebView {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Block WKWebView's native Cmd+R reload (which blanks loadHTMLString content).
+        // Let the app menu's Reload action handle it instead.
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers == "r" {
+            NSApp.sendAction(#selector(AppDelegate.reload(_:)), to: nil, from: self)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 /// Renders documents using WKWebView.
 /// Handles docx, docmod, doct, html, markdown, and code files.
 class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate {
@@ -81,7 +94,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     }()
 
     private let containerView: NSView
-    private let webView: WKWebView
+    private let webView: AnyViewWebView
     private let pdfView: PDFView
     private let texToggleBtn: NSButton
     private let lock = NSLock()
@@ -113,7 +126,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         containerView = NSView(frame: .zero)
 
         let config = WKWebViewConfiguration()
-        webView = WKWebView(frame: .zero, configuration: config)
+        webView = AnyViewWebView(frame: .zero, configuration: config)
         webView.autoresizingMask = [.width, .height]
 
         pdfView = PDFView(frame: .zero)
