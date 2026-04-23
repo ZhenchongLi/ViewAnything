@@ -7,6 +7,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     static let docExtensions: Set<String> = ["docmod", "doct", "docx"]
     static let htmlExtensions: Set<String> = ["html", "htm"]
     static let markdownExtensions: Set<String> = ["md", "markdown"]
+    static let texExtensions: Set<String> = ["tex"]
     static let codeExtensions: Set<String> = [
         // Languages
         "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
@@ -27,8 +28,14 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         "makefile", "cmake", "gradle", "sln", "csproj", "xcodeproj",
         // Other
         "lock", "sum", "mod",
+        // LaTeX auxiliary
+        "sty", "cls", "bib", "bbl",
     ]
-    static let supportedExtensions: Set<String> = docExtensions.union(htmlExtensions).union(markdownExtensions).union(codeExtensions)
+    static let supportedExtensions: Set<String> = docExtensions
+        .union(htmlExtensions)
+        .union(markdownExtensions)
+        .union(texExtensions)
+        .union(codeExtensions)
 
     static let mermaidScript: String = {
         guard let url = Bundle.module.url(forResource: "mermaid.min", withExtension: "js"),
@@ -109,6 +116,10 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         }
         if Self.markdownExtensions.contains(ext) {
             loadMarkdownFile(filePath)
+            return
+        }
+        if Self.texExtensions.contains(ext) {
+            loadTexFile(filePath)
             return
         }
         if Self.codeExtensions.contains(ext) {
@@ -502,6 +513,194 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         }
     }
 
+    // MARK: - TeX File
+
+    private static func tectonicPath() -> String? {
+        if let bundled = Bundle.main.path(forResource: "tectonic", ofType: nil) {
+            return bundled
+        }
+        let candidates = [
+            "/opt/homebrew/bin/tectonic",
+            "/usr/local/bin/tectonic",
+            (NSHomeDirectory() as NSString).appendingPathComponent(".local/bin/tectonic"),
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private func loadTexFile(_ filePath: String) {
+        guard let source = try? String(contentsOfFile: filePath, encoding: .utf8) else {
+            showError("Failed to read file")
+            return
+        }
+        let escaped = source
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let highlightInline = Self.highlightScript.isEmpty ? "" : "<script>\(Self.highlightScript)</script>"
+
+        func makeSourceHtml(statusMsg: String, isError: Bool) -> String {
+            let statusColor = isError ? "#b91c1c" : "#888"
+            let statusHtml = statusMsg.isEmpty ? "" : """
+            <div style="position:fixed;top:12px;right:16px;z-index:9999;padding:6px 12px;
+                        font:12px -apple-system,sans-serif;color:\(statusColor);
+                        background:rgba(0,0,0,0.06);border-radius:4px;max-width:60%;
+                        white-space:pre-wrap;">\(statusMsg.replacingOccurrences(of: "\n", with: "<br>"))</div>
+            """
+            return """
+            <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
+            <style>
+            body{margin:0;padding:20px 24px;font-family:"SF Mono",Menlo,monospace;font-size:13px;
+                 background:#f8f9fa;color:#1a1a1a;}
+            pre{margin:0;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;tab-size:4;}
+            .hljs{display:block;overflow-x:auto;padding:0;color:#333;background:transparent;}
+            .hljs-comment,.hljs-quote{color:#998;font-style:italic;}
+            .hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:bold;}
+            .hljs-number,.hljs-literal,.hljs-variable,.hljs-template-variable,.hljs-tag .hljs-attr{color:#008080;}
+            .hljs-string,.hljs-doctag{color:#d14;}
+            .hljs-title,.hljs-section,.hljs-selector-id{color:#900;font-weight:bold;}
+            .hljs-built_in,.hljs-builtin-name{color:#0086b3;}
+            .hljs-meta{color:#999;font-weight:bold;}
+            @media(prefers-color-scheme:dark){
+                body{background:#1e1e1e;color:#d4d4d4;}
+                .hljs{color:#abb2bf;}
+                .hljs-comment,.hljs-quote{color:#5c6370;font-style:italic;}
+                .hljs-keyword,.hljs-formula{color:#c678dd;}
+                .hljs-string,.hljs-regexp,.hljs-addition,.hljs-attribute{color:#98c379;}
+                .hljs-built_in{color:#e6c07b;}
+                .hljs-number,.hljs-type,.hljs-selector-class,.hljs-selector-pseudo{color:#d19a66;}
+            }
+            </style>
+            \(highlightInline)
+            </head><body>
+            \(statusHtml)
+            <pre><code class="language-latex">\(escaped)</code></pre>
+            <script>if(window.hljs){hljs.highlightAll();}</script>
+            </body></html>
+            """
+        }
+
+        // Show source + "Compiling…" immediately
+        let compilingHtml = makeSourceHtml(statusMsg: "Compiling…", isError: false)
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.loadHTMLString(compilingHtml, baseURL: URL(fileURLWithPath: filePath))
+        }
+
+        guard let tectonic = Self.tectonicPath() else {
+            let html = makeSourceHtml(statusMsg: "tectonic not found — install with: brew install tectonic", isError: true)
+            DispatchQueue.main.async { [weak self] in
+                self?.webView.loadHTMLString(html, baseURL: URL(fileURLWithPath: filePath))
+            }
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+
+            let tmpDir = (NSTemporaryDirectory() as NSString)
+                .appendingPathComponent("anyview-tex-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(atPath: tmpDir, withIntermediateDirectories: true)
+
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: tectonic)
+            task.arguments = ["--outdir", tmpDir, filePath]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+
+            do {
+                try task.run()
+                task.waitUntilExit()
+            } catch {
+                let html = makeSourceHtml(statusMsg: "Failed to launch tectonic: \(error.localizedDescription)", isError: true)
+                DispatchQueue.main.async { self.webView.loadHTMLString(html, baseURL: URL(fileURLWithPath: filePath)) }
+                try? FileManager.default.removeItem(atPath: tmpDir)
+                return
+            }
+
+            let baseName = URL(fileURLWithPath: filePath).deletingPathExtension().lastPathComponent
+            let pdfPath = (tmpDir as NSString).appendingPathComponent("\(baseName).pdf")
+
+            if task.terminationStatus == 0, FileManager.default.fileExists(atPath: pdfPath) {
+                self.tempDir = tmpDir
+                let pdfURL = URL(fileURLWithPath: pdfPath)
+                let pdfName = pdfURL.lastPathComponent
+                let html = """
+                <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
+                <style>
+                *{margin:0;padding:0;box-sizing:border-box;}
+                body{background:#fff;}
+                iframe{width:100%;height:100vh;border:none;display:block;}
+                #source{display:none;margin:0;padding:20px 24px;white-space:pre-wrap;word-wrap:break-word;
+                        font-family:"SF Mono",Menlo,monospace;font-size:13px;line-height:1.5;tab-size:4;
+                        color:#1a1a1a;background:#f8f9fa;min-height:100vh;}
+                .toggle-btn{position:fixed;top:12px;right:16px;z-index:9999;
+                            width:32px;height:32px;border:none;border-radius:50%;
+                            background:rgba(0,0,0,0.06);color:#555;
+                            font-size:14px;font-family:-apple-system,sans-serif;font-weight:500;
+                            cursor:pointer;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+                            display:flex;align-items:center;justify-content:center;
+                            transition:all 0.2s;line-height:1;}
+                .toggle-btn:hover{background:rgba(0,0,0,0.12);transform:scale(1.08);}
+                .hljs{display:block;overflow-x:auto;padding:0;color:#333;background:transparent;}
+                .hljs-comment,.hljs-quote{color:#998;font-style:italic;}
+                .hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:bold;}
+                .hljs-number,.hljs-literal,.hljs-variable,.hljs-template-variable,.hljs-tag .hljs-attr{color:#008080;}
+                .hljs-string,.hljs-doctag{color:#d14;}
+                .hljs-title,.hljs-section,.hljs-selector-id{color:#900;font-weight:bold;}
+                .hljs-built_in,.hljs-builtin-name{color:#0086b3;}
+                .hljs-meta{color:#999;font-weight:bold;}
+                @media(prefers-color-scheme:dark){
+                    body{background:#1a1a1a;}
+                    #source{color:#d4d4d4;background:#1e1e1e;}
+                    .toggle-btn{background:rgba(255,255,255,0.1);color:#aaa;}
+                    .toggle-btn:hover{background:rgba(255,255,255,0.18);}
+                    .hljs{color:#abb2bf;}
+                    .hljs-comment,.hljs-quote{color:#5c6370;font-style:italic;}
+                    .hljs-keyword,.hljs-formula{color:#c678dd;}
+                    .hljs-string,.hljs-regexp,.hljs-addition,.hljs-attribute{color:#98c379;}
+                    .hljs-built_in{color:#e6c07b;}
+                    .hljs-number,.hljs-type,.hljs-selector-class,.hljs-selector-pseudo{color:#d19a66;}
+                }
+                </style>
+                \(highlightInline)
+                </head><body>
+                <button class="toggle-btn" onclick="toggle()">&lt;/&gt;</button>
+                <iframe id="preview" src="\(pdfName)"></iframe>
+                <pre id="source"><code class="language-latex">\(escaped)</code></pre>
+                <script>
+                var showing='preview';
+                function toggle(){
+                    var p=document.getElementById('preview');
+                    var s=document.getElementById('source');
+                    var btn=document.querySelector('.toggle-btn');
+                    if(showing==='preview'){
+                        p.style.display='none';s.style.display='block';
+                        btn.innerHTML='\u{1f441}';showing='source';
+                        if(window.hljs){hljs.highlightAll();}
+                    }else{
+                        s.style.display='none';p.style.display='block';
+                        btn.innerHTML='&lt;/&gt;';showing='preview';
+                    }
+                }
+                </script>
+                </body></html>
+                """
+                let tmpDirURL = URL(fileURLWithPath: tmpDir)
+                let htmlPath = (tmpDir as NSString).appendingPathComponent("index.html")
+                try? html.write(toFile: htmlPath, atomically: true, encoding: .utf8)
+                DispatchQueue.main.async {
+                    self.webView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: tmpDirURL)
+                }
+            } else {
+                let errData = pipe.fileHandleForReading.readDataToEndOfFile()
+                let errMsg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Compilation failed"
+                let html = makeSourceHtml(statusMsg: errMsg, isError: true)
+                DispatchQueue.main.async { self.webView.loadHTMLString(html, baseURL: URL(fileURLWithPath: filePath)) }
+                try? FileManager.default.removeItem(atPath: tmpDir)
+            }
+        }
+    }
+
     // MARK: - Code File
 
     private static let langMap: [String: String] = [
@@ -524,6 +723,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         "log": "plaintext", "diff": "diff", "patch": "diff",
         "makefile": "makefile", "cmake": "cmake",
         "html": "html", "htm": "html",
+        "tex": "latex", "sty": "latex", "cls": "latex", "bib": "tex", "bbl": "tex",
     ]
 
     private func loadCodeFile(_ filePath: String) {

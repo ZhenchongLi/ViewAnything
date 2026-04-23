@@ -62,6 +62,25 @@ else
     echo "Note: docmod CLI not found — .docx preview will not work without it"
 fi
 
+# Bundle tectonic (LaTeX compiler) if available
+TECTONIC_BIN=""
+if [ -n "${TECTONIC_PATH:-}" ] && [ -x "$TECTONIC_PATH" ]; then
+    TECTONIC_BIN="$TECTONIC_PATH"
+elif [ -x "/opt/homebrew/bin/tectonic" ]; then
+    TECTONIC_BIN="/opt/homebrew/bin/tectonic"
+elif [ -x "/usr/local/bin/tectonic" ]; then
+    TECTONIC_BIN="/usr/local/bin/tectonic"
+elif command -v tectonic &>/dev/null; then
+    TECTONIC_BIN="$(command -v tectonic)"
+fi
+
+if [ -n "$TECTONIC_BIN" ]; then
+    cp "$TECTONIC_BIN" "$MACOS/tectonic"
+    echo "Bundled tectonic from $TECTONIC_BIN"
+else
+    echo "Note: tectonic not found — .tex compilation will not work without it"
+fi
+
 # Bundle av CLI script
 cp "$SCRIPT_DIR/scripts/av" "$RESOURCES/av"
 chmod +x "$RESOURCES/av"
