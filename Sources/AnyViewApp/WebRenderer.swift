@@ -10,6 +10,9 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     static let markdownExtensions: Set<String> = ["md", "markdown"]
     static let texExtensions: Set<String> = ["tex"]
     static let subtitleExtensions: Set<String> = ["srt", "vtt", "ass", "ssa", "sub", "sbv"]
+    static let videoExtensions: Set<String> = [
+        "mp4", "mov", "m4v", "webm", "mkv", "avi", "flv", "wmv", "m2ts", "ts", "3gp", "ogv",
+    ]
     static let codeExtensions: Set<String> = [
         // Languages
         "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
@@ -38,6 +41,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         .union(markdownExtensions)
         .union(texExtensions)
         .union(subtitleExtensions)
+        .union(videoExtensions)
         .union(codeExtensions)
 
     static let mermaidScript: String = {
@@ -167,6 +171,10 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         }
         if Self.subtitleExtensions.contains(ext) {
             loadSubtitleFile(filePath)
+            return
+        }
+        if Self.videoExtensions.contains(ext) {
+            loadVideoFile(filePath)
             return
         }
         if Self.codeExtensions.contains(ext) {
@@ -616,6 +624,126 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         let baseURL = URL(fileURLWithPath: filePath).deletingLastPathComponent()
         DispatchQueue.main.async { [weak self] in
             self?.webView.loadHTMLString(html, baseURL: baseURL)
+        }
+    }
+
+    // MARK: - Video File
+
+    private func loadVideoFile(_ filePath: String) {
+        let videoURL = URL(fileURLWithPath: (filePath as NSString).standardizingPath)
+        let videoFileURI = videoURL.absoluteString
+        let filename = videoURL.lastPathComponent
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="UTF-8">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: #000; display: flex; flex-direction: column;
+                   height: 100vh; overflow: hidden; }
+            video { flex: 1; width: 100%; min-height: 0; background: #000; display: block; }
+            #toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+                       padding: 6px 12px; background: #111;
+                       font-family: -apple-system, sans-serif; font-size: 12px; color: #aaa; }
+            #toolbar button {
+                padding: 4px 10px; border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 5px; background: rgba(255,255,255,0.08); color: #ccc;
+                font-size: 12px; cursor: pointer; font-family: inherit; }
+            #toolbar button:hover { background: rgba(255,255,255,0.15); }
+            #sub-label { color: #666; font-style: italic; }
+            #err { color: #f87171; font-size: 12px; display: none; padding: 4px 8px; }
+        </style>
+        </head>
+        <body>
+        <video id="v" controls preload="metadata">
+            <source src="\(videoFileURI)">
+            <track id="sub-track" kind="subtitles" label="字幕" srclang="und" default>
+        </video>
+        <div id="toolbar">
+            <button onclick="document.getElementById('f').click()">加载字幕…</button>
+            <span id="sub-label">未加载字幕</span>
+            <span id="err"></span>
+            <input type="file" id="f" accept=".srt,.vtt,.ass,.ssa,.sub,.sbv" style="display:none">
+        </div>
+        <script>
+        function srtToVtt(s) {
+            return 'WEBVTT\\n\\n' + s
+                .replace(/\\r\\n/g, '\\n')
+                .replace(/\\r/g, '\\n')
+                .replace(/(\\d{2}:\\d{2}:\\d{2}),(\\d{3})/g, '$1.$2')
+                .trim();
+        }
+        function assToVtt(s) {
+            var vtt = 'WEBVTT\\n\\n';
+            var idx = 1;
+            s.split('\\n').forEach(function(line) {
+                var m = line.match(/^Dialogue:\\s*\\d+,([\\d:.]+),([\\d:.]+),[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,(.*)/);
+                if (!m) return;
+                function t(ts) {
+                    var p = ts.split(':');
+                    return (p[0].length < 2 ? '0' + p[0] : p[0]) + ':' + p[1] + ':' + p[2].replace('.', '.');
+                }
+                var text = m[3].replace(/\\{[^}]*\\}/g, '').replace(/<[^>]+>/g, '');
+                vtt += (idx++) + '\\n' + t(m[1]) + ' --> ' + t(m[2]) + '\\n' + text + '\\n\\n';
+            });
+            return vtt;
+        }
+        document.getElementById('f').onchange = function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var err = document.getElementById('err');
+            err.style.display = 'none';
+            var reader = new FileReader();
+            reader.onerror = function() { err.textContent = '读取失败'; err.style.display = 'inline'; };
+            reader.onload = function(ev) {
+                var content = ev.target.result;
+                var ext = file.name.split('.').pop().toLowerCase();
+                var vtt;
+                try {
+                    if (ext === 'vtt') { vtt = content; }
+                    else if (ext === 'ass' || ext === 'ssa') { vtt = assToVtt(content); }
+                    else { vtt = srtToVtt(content); }
+                } catch(ex) {
+                    err.textContent = '解析失败: ' + ex.message;
+                    err.style.display = 'inline'; return;
+                }
+                var blob = new Blob([vtt], { type: 'text/vtt' });
+                var url = URL.createObjectURL(blob);
+                var track = document.getElementById('sub-track');
+                var old = track.src;
+                track.src = url;
+                if (old && old.startsWith('blob:')) URL.revokeObjectURL(old);
+                // Force track reload
+                var v = document.getElementById('v');
+                for (var i = 0; i < v.textTracks.length; i++) {
+                    v.textTracks[i].mode = 'showing';
+                }
+                document.getElementById('sub-label').textContent = file.name;
+            };
+            reader.readAsText(file, 'UTF-8');
+        };
+        document.getElementById('v').onerror = function() {
+            document.getElementById('err').textContent =
+                '无法播放此格式（\(filename)）— 仅支持 mp4 / mov / webm / m4v';
+            document.getElementById('err').style.display = 'inline';
+        };
+        </script>
+        </body>
+        </html>
+        """
+
+        let tmpDir = (NSTemporaryDirectory() as NSString).appendingPathComponent("anyview-video-tmp")
+        try? FileManager.default.createDirectory(atPath: tmpDir, withIntermediateDirectories: true)
+        let htmlPath = (tmpDir as NSString).appendingPathComponent("index.html")
+        try? html.write(toFile: htmlPath, atomically: true, encoding: .utf8)
+
+        let accessDir = videoURL.deletingLastPathComponent()
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: accessDir)
         }
     }
 
