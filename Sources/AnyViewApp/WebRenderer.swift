@@ -5,10 +5,10 @@ import WebKit
 private class AnyViewWebView: WKWebView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // Block WKWebView's native Cmd+R reload (which blanks loadHTMLString content).
-        // Let the app menu's Reload action handle it instead.
-        if event.modifierFlags.contains(.command),
+        // Send directly to AppDelegate to avoid hitting WKWebView.reload() via responder chain.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.charactersIgnoringModifiers == "r" {
-            NSApp.sendAction(#selector(AppDelegate.reload(_:)), to: nil, from: self)
+            NSApp.sendAction(#selector(AppDelegate.reload(_:)), to: NSApp.delegate, from: self)
             return true
         }
         return super.performKeyEquivalent(with: event)
