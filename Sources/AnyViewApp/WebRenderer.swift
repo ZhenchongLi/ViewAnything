@@ -1282,19 +1282,27 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
                       backdrop-filter: blur(8px); }
             #status:empty { display: none; }
             #status.error { background: #b91c1c; }
-            /* Map Windows CJK fonts to macOS equivalents */
-            @font-face { font-family: '宋体'; src: local('STSong-Light'), local('STSong'); }
-            @font-face { font-family: 'SimSun'; src: local('STSong-Light'), local('STSong'); }
-            @font-face { font-family: '微软雅黑'; src: local('PingFang SC'); }
-            @font-face { font-family: 'Microsoft YaHei'; src: local('PingFang SC'); }
-            @font-face { font-family: '黑体'; src: local('STHeiti'); }
-            @font-face { font-family: 'SimHei'; src: local('STHeiti'); }
+            /* Map Windows CJK fonts to macOS equivalents (normal + bold) */
+            @font-face { font-family: '宋体'; font-weight: normal; src: local('STSong-Light'), local('STSong'); }
+            @font-face { font-family: '宋体'; font-weight: bold; src: local('STSong'); }
+            @font-face { font-family: 'SimSun'; font-weight: normal; src: local('STSong-Light'), local('STSong'); }
+            @font-face { font-family: 'SimSun'; font-weight: bold; src: local('STSong'); }
+            @font-face { font-family: '微软雅黑'; font-weight: normal; src: local('PingFang SC'), local('PingFang SC Regular'); }
+            @font-face { font-family: '微软雅黑'; font-weight: bold; src: local('PingFang SC Semibold'), local('PingFang SC Medium'); }
+            @font-face { font-family: 'Microsoft YaHei'; font-weight: normal; src: local('PingFang SC'), local('PingFang SC Regular'); }
+            @font-face { font-family: 'Microsoft YaHei'; font-weight: bold; src: local('PingFang SC Semibold'), local('PingFang SC Medium'); }
+            @font-face { font-family: '黑体'; font-weight: normal; src: local('STHeiti'); }
+            @font-face { font-family: '黑体'; font-weight: bold; src: local('STHeiti Medium'); }
+            @font-face { font-family: 'SimHei'; font-weight: normal; src: local('STHeiti'); }
+            @font-face { font-family: 'SimHei'; font-weight: bold; src: local('STHeiti Medium'); }
             @font-face { font-family: '楷体'; src: local('STKaiti'); }
             @font-face { font-family: 'KaiTi'; src: local('STKaiti'); }
             @font-face { font-family: '仿宋'; src: local('STFangsong'); }
             @font-face { font-family: 'FangSong'; src: local('STFangsong'); }
-            @font-face { font-family: '等线'; src: local('PingFang SC'); }
-            @font-face { font-family: 'DengXian'; src: local('PingFang SC'); }
+            @font-face { font-family: '等线'; font-weight: normal; src: local('PingFang SC'); }
+            @font-face { font-family: '等线'; font-weight: bold; src: local('PingFang SC Semibold'); }
+            @font-face { font-family: 'DengXian'; font-weight: normal; src: local('PingFang SC'); }
+            @font-face { font-family: 'DengXian'; font-weight: bold; src: local('PingFang SC Semibold'); }
         </style>
         <script>\(Self.jszipScript)</script>
         <script>\(Self.docxPreviewScript)</script>
