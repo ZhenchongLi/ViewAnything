@@ -30,6 +30,8 @@ impl WebRenderer {
             "tex",
             // LaTeX auxiliary (syntax highlight only)
             "sty", "cls", "bib", "bbl",
+            // Subtitles
+            "srt", "vtt", "ass", "ssa", "sub", "sbv",
             // Code — languages
             "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
             "kt", "scala", "c", "h", "cpp", "hpp", "m", "mm", "lua", "r", "pl",
@@ -112,6 +114,100 @@ impl WebRenderer {
             "bib" | "bbl" => "tex".into(),
             other => other.to_string(),
         }
+    }
+
+    fn load_subtitle_file(&self, path: &Path) {
+        let raw = std::fs::read(path)
+            .ok()
+            .and_then(|b| String::from_utf8(b.clone()).ok()
+                .or_else(|| String::from_utf8_lossy(&b).to_string().into()))
+            .unwrap_or_default();
+
+        let source_escaped = html_escape::encode_text(&raw).to_string();
+        let ext = Self::ext_lower(path);
+
+        // Escape for JS template literal
+        let js_source = raw
+            .replace('\\', "\\\\")
+            .replace('`', "\\`")
+            .replace('$', "\\$");
+
+        let html = format!(
+            r#"<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;background:#fff;color:#1a1a1a;}}
+#preview{{padding:0 0 40px;}}
+.entry{{display:flex;gap:0;border-bottom:1px solid #f0f0f0;}}
+.entry:hover{{background:#f9fafb;}}
+.num{{flex:0 0 48px;padding:10px 8px 10px 16px;color:#aaa;font-size:12px;text-align:right;user-select:none;}}
+.time{{flex:0 0 220px;padding:10px 12px;font-family:"JetBrains Mono","Fira Code",Menlo,monospace;font-size:11px;color:#888;white-space:nowrap;}}
+.text{{flex:1;padding:10px 16px 10px 0;line-height:1.5;}}
+.header{{position:sticky;top:0;z-index:10;padding:8px 16px;font-size:12px;color:#888;
+         background:#fff;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;}}
+.header .th-num{{flex:0 0 48px;text-align:right;}}
+.header .th-time{{flex:0 0 220px;padding-left:12px;}}
+.header .th-text{{flex:1;}}
+#source{{display:none;margin:0;padding:20px 24px;white-space:pre-wrap;word-wrap:break-word;
+        font-family:"JetBrains Mono","Fira Code",Menlo,monospace;font-size:13px;line-height:1.5;}}
+.toggle-btn{{position:fixed;top:12px;right:16px;z-index:9999;padding:4px 12px;
+            border:1px solid rgba(0,0,0,0.15);border-radius:6px;
+            background:rgba(255,255,255,0.9);color:#333;
+            font-size:12px;font-family:system-ui,sans-serif;cursor:pointer;}}
+@media(prefers-color-scheme:dark){{
+body{{background:#1a1a1a;color:#d4d4d4;}}
+.entry{{border-bottom-color:#2a2a2a;}}
+.entry:hover{{background:#222;}}
+.header{{background:#1a1a1a;border-bottom-color:#333;}}
+.toggle-btn{{background:rgba(40,40,40,0.9);border-color:rgba(255,255,255,0.15);color:#ccc;}}
+}}
+</style></head><body>
+<button class="toggle-btn" onclick="toggle()">&lt;/&gt; Source</button>
+<div id="preview">
+  <div class="header"><span class="th-num">#</span><span class="th-time">Timecode</span><span class="th-text">Text</span></div>
+  <div id="entries"></div>
+</div>
+<pre id="source">{source}</pre>
+<script>
+var showing='preview';
+function toggle(){{
+var p=document.getElementById('preview');var s=document.getElementById('source');var btn=document.querySelector('.toggle-btn');
+if(showing==='preview'){{p.style.display='none';s.style.display='block';btn.textContent='Preview';showing='source';}}
+else{{s.style.display='none';p.style.display='block';btn.innerHTML='&lt;/&gt; Source';showing='preview';}}
+}}
+function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+function inlineStyle(s){{return s.replace(/<i>(.*?)<\/i>/g,'<em>$1</em>').replace(/<b>(.*?)<\/b>/g,'<b>$1</b>').replace(/<[^>]+>/g,'');}}
+var raw=`{js_source}`;
+var ext='{ext}';
+var entries=[];
+if(ext==='vtt'){{
+  raw.replace(/\r\n/g,'\n').split(/\n\s*\n/).forEach(function(b){{
+    b=b.trim();if(!b||b==='WEBVTT')return;
+    var lines=b.split('\n');
+    var ti=lines.findIndex(function(l){{return l.indexOf('-->')!==-1;}});
+    if(ti===-1)return;
+    var num=ti>0?lines[0]:String(entries.length+1);
+    entries.push({{num:num,time:lines[ti],text:lines.slice(ti+1).join('<br>')}});
+  }});
+}}else{{
+  raw.replace(/\r\n/g,'\n').split(/\n\s*\n/).forEach(function(b){{
+    b=b.trim();if(!b)return;
+    var lines=b.split('\n');if(lines.length<2)return;
+    var time=lines[1].trim();if(time.indexOf('-->')===-1)return;
+    entries.push({{num:lines[0].trim(),time:time,text:lines.slice(2).join('<br>')}});
+  }});
+}}
+var c=document.getElementById('entries');
+c.innerHTML=entries.length===0
+  ?'<div style="padding:24px 16px;color:#888;font-size:13px;">No entries found — see source view.</div>'
+  :entries.map(function(e){{return '<div class="entry"><div class="num">'+esc(e.num)+'</div><div class="time">'+esc(e.time)+'</div><div class="text">'+inlineStyle(e.text)+'</div></div>';}}).join('');
+</script></body></html>"#,
+            source = source_escaped,
+            js_source = js_source,
+            ext = ext,
+        );
+
+        self.webview.load_html(&html, None);
     }
 
     fn tectonic_path() -> Option<String> {
@@ -606,6 +702,7 @@ impl Renderer for WebRenderer {
             "html" | "htm" => self.load_html_file(path),
             "md" | "markdown" => self.load_markdown_file(path),
             "tex" => self.load_tex_file(path),
+            "srt" | "vtt" | "ass" | "ssa" | "sub" | "sbv" => self.load_subtitle_file(path),
             _ => self.load_code_file(path),
         }
     }

@@ -9,6 +9,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     static let htmlExtensions: Set<String> = ["html", "htm"]
     static let markdownExtensions: Set<String> = ["md", "markdown"]
     static let texExtensions: Set<String> = ["tex"]
+    static let subtitleExtensions: Set<String> = ["srt", "vtt", "ass", "ssa", "sub", "sbv"]
     static let codeExtensions: Set<String> = [
         // Languages
         "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
@@ -36,6 +37,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         .union(htmlExtensions)
         .union(markdownExtensions)
         .union(texExtensions)
+        .union(subtitleExtensions)
         .union(codeExtensions)
 
     static let mermaidScript: String = {
@@ -161,6 +163,10 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
         }
         if Self.texExtensions.contains(ext) {
             loadTexFile(filePath)
+            return
+        }
+        if Self.subtitleExtensions.contains(ext) {
+            loadSubtitleFile(filePath)
             return
         }
         if Self.codeExtensions.contains(ext) {
@@ -601,6 +607,159 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
             var isDark = matchMedia('(prefers-color-scheme: dark)').matches;
             mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
             mermaid.run({ querySelector: '.mermaid' });
+        }
+        </script>
+        </body>
+        </html>
+        """
+
+        let baseURL = URL(fileURLWithPath: filePath).deletingLastPathComponent()
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.loadHTMLString(html, baseURL: baseURL)
+        }
+    }
+
+    // MARK: - Subtitle File
+
+    private func loadSubtitleFile(_ filePath: String) {
+        guard let raw = try? String(contentsOfFile: filePath, encoding: .utf8)
+                ?? String(contentsOfFile: filePath, encoding: .isoLatin1) else {
+            showError("Failed to read file")
+            return
+        }
+
+        let sourceEscaped = raw
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let jsSource = raw
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "`", with: "\\`")
+            .replacingOccurrences(of: "$", with: "\\$")
+        let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
+
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="UTF-8">
+        <meta name="color-scheme" content="light dark">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, sans-serif; font-size: 14px;
+                   background: #fff; color: #1a1a1a; }
+            #preview { padding: 0 0 40px; }
+            .entry { display: flex; gap: 0; border-bottom: 1px solid #f0f0f0; }
+            .entry:hover { background: #f9fafb; }
+            .num { flex: 0 0 48px; padding: 10px 8px 10px 16px;
+                   color: #aaa; font-size: 12px; font-variant-numeric: tabular-nums;
+                   text-align: right; user-select: none; }
+            .time { flex: 0 0 200px; padding: 10px 12px;
+                    font-family: "SF Mono", Menlo, monospace; font-size: 11px;
+                    color: #888; white-space: nowrap; }
+            .text { flex: 1; padding: 10px 16px 10px 0; line-height: 1.5; }
+            .text em { font-style: italic; }
+            .text b { font-weight: bold; }
+            .header { position: sticky; top: 0; z-index: 10;
+                      padding: 8px 16px; font-size: 12px; color: #888;
+                      background: #fff; border-bottom: 1px solid #e5e7eb;
+                      display: flex; gap: 12px; }
+            .header span { flex: 0 0 48px; text-align: right; }
+            .header .th-time { flex: 0 0 200px; padding-left: 12px; }
+            .header .th-text { flex: 1; }
+            #source { display: none; margin: 0; padding: 20px 24px;
+                      white-space: pre-wrap; word-wrap: break-word;
+                      font-family: "SF Mono", Menlo, monospace; font-size: 13px;
+                      line-height: 1.5; tab-size: 4; min-height: 100vh; }
+            .toggle-btn { position: fixed; top: 12px; right: 16px; z-index: 9999;
+                          width: 32px; height: 32px; border: none; border-radius: 50%;
+                          background: rgba(0,0,0,0.06); color: #555;
+                          font-size: 14px; cursor: pointer;
+                          backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                          display: flex; align-items: center; justify-content: center;
+                          transition: all 0.2s; }
+            .toggle-btn:hover { background: rgba(0,0,0,0.12); transform: scale(1.08); }
+            @media (prefers-color-scheme: dark) {
+                body { background: #1a1a1a; color: #d4d4d4; }
+                .entry { border-bottom-color: #2a2a2a; }
+                .entry:hover { background: #222; }
+                .header { background: #1a1a1a; border-bottom-color: #333; }
+                .toggle-btn { background: rgba(255,255,255,0.1); color: #aaa; }
+                .toggle-btn:hover { background: rgba(255,255,255,0.18); }
+            }
+        </style>
+        </head>
+        <body>
+        <button class="toggle-btn" onclick="toggle()">&lt;/&gt;</button>
+        <div id="preview">
+          <div class="header">
+            <span>#</span><span class="th-time">Timecode</span><span class="th-text">Text</span>
+          </div>
+          <div id="entries"></div>
+        </div>
+        <pre id="source">\(sourceEscaped)</pre>
+        <script>
+        var showing = 'preview';
+        function toggle() {
+            var p = document.getElementById('preview');
+            var s = document.getElementById('source');
+            var btn = document.querySelector('.toggle-btn');
+            if (showing === 'preview') {
+                p.style.display = 'none'; s.style.display = 'block';
+                btn.innerHTML = '\\u{1f441}'; showing = 'source';
+            } else {
+                s.style.display = 'none'; p.style.display = 'block';
+                btn.innerHTML = '&lt;/&gt;'; showing = 'preview';
+            }
+        }
+        function esc(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+        function inlineStyle(s) {
+            return s.replace(/<i>(.*?)<\\/i>/g,'<em>$1</em>')
+                    .replace(/<b>(.*?)<\\/b>/g,'<b>$1</b>')
+                    .replace(/<[^>]+>/g,'');
+        }
+        var raw = `\(jsSource)`;
+        var ext = '\(ext)';
+        var entries = [];
+        if (ext === 'vtt') {
+            var blocks = raw.replace(/\\r\\n/g,'\\n').split(/\\n\\s*\\n/);
+            blocks.forEach(function(b) {
+                b = b.trim();
+                if (!b || b === 'WEBVTT') return;
+                var lines = b.split('\\n');
+                var ti = lines.findIndex(function(l){ return l.indexOf('-->') !== -1; });
+                if (ti === -1) return;
+                var num = ti > 0 ? lines[0] : String(entries.length + 1);
+                var time = lines[ti];
+                var text = lines.slice(ti + 1).join('<br>');
+                entries.push({ num: num, time: time, text: text });
+            });
+        } else {
+            // SRT and fallback: blocks split on blank lines
+            var blocks = raw.replace(/\\r\\n/g,'\\n').split(/\\n\\s*\\n/);
+            blocks.forEach(function(b) {
+                b = b.trim();
+                if (!b) return;
+                var lines = b.split('\\n');
+                if (lines.length < 2) return;
+                var num = lines[0].trim();
+                var time = lines[1].trim();
+                if (time.indexOf('-->') === -1) return;
+                var text = lines.slice(2).join('<br>');
+                entries.push({ num: num, time: time, text: text });
+            });
+        }
+        var container = document.getElementById('entries');
+        if (entries.length === 0) {
+            container.innerHTML = '<div style="padding:24px 16px;color:#888;font-size:13px;">No subtitle entries found — see source view.</div>';
+        } else {
+            container.innerHTML = entries.map(function(e) {
+                return '<div class="entry"><div class="num">' + esc(e.num) + '</div>' +
+                       '<div class="time">' + esc(e.time) + '</div>' +
+                       '<div class="text">' + inlineStyle(e.text) + '</div></div>';
+            }).join('');
         }
         </script>
         </body>
