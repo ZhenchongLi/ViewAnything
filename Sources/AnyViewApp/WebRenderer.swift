@@ -162,12 +162,22 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     // MARK: - Find
 
     func performFind(query: String, forward: Bool, completion: @escaping (Bool) -> Void) {
-        let config = WKFindConfiguration()
-        config.backwards = !forward
-        config.wraps = true
-        config.caseSensitive = false
-        webView.find(query, configuration: config) { result in
-            completion(result.matchFound)
+        func doFind() {
+            let config = WKFindConfiguration()
+            config.backwards = !forward
+            config.wraps = true
+            config.caseSensitive = false
+            self.webView.find(query, configuration: config) { result in
+                completion(result.matchFound)
+            }
+        }
+        // PDF iframes aren't searchable — switch to source view first if tex is showing PDF
+        if Self.texExtensions.contains(fileExtension) {
+            webView.evaluateJavaScript(
+                "if(typeof showing!=='undefined'&&showing==='preview'){toggle();}"
+            ) { _, _ in doFind() }
+        } else {
+            doFind()
         }
     }
 
