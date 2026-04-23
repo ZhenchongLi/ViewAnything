@@ -85,6 +85,9 @@ class ViewerWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
         toolbar.displayMode = .iconOnly
         win.toolbar = toolbar
         win.titleVisibility = .visible
+        if let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            win.subtitle = "v\(v)"
+        }
 
         win.center()
         win.makeKeyAndOrderFront(nil)
