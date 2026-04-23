@@ -6,6 +6,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var hasOpenedFile = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installCLIIfNeeded()
+
         // Accept file paths from command line (skip executable path at index 0)
         let args = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
         for arg in args where FileManager.default.fileExists(atPath: arg) {
@@ -157,21 +159,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - CLI Tool
 
-    @objc func installCLI(_ sender: Any?) {
-        guard let bundledAv = Bundle.main.path(forResource: "av", ofType: nil) else {
-            showError("Bundled 'av' script not found.")
-            return
-        }
+    private func installCLIIfNeeded() {
+        let dest = (NSHomeDirectory() as NSString)
+            .appendingPathComponent(".local/bin/av")
+        guard !FileManager.default.fileExists(atPath: dest) else { return }
+        try? performCLIInstall()
+    }
+
+    private func performCLIInstall() throws {
+        guard let src = Bundle.main.path(forResource: "av", ofType: nil) else { return }
         let localBin = (NSHomeDirectory() as NSString).appendingPathComponent(".local/bin")
         let dest = (localBin as NSString).appendingPathComponent("av")
         let fm = FileManager.default
+        try fm.createDirectory(atPath: localBin, withIntermediateDirectories: true)
+        if fm.fileExists(atPath: dest) { try fm.removeItem(atPath: dest) }
+        try fm.copyItem(atPath: src, toPath: dest)
+        var attrs = try fm.attributesOfItem(atPath: dest)
+        attrs[.posixPermissions] = 0o755
+        try fm.setAttributes(attrs, ofItemAtPath: dest)
+    }
+
+    @objc func installCLI(_ sender: Any?) {
+        let dest = (NSHomeDirectory() as NSString).appendingPathComponent(".local/bin/av")
         do {
-            try fm.createDirectory(atPath: localBin, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: dest) { try fm.removeItem(atPath: dest) }
-            try fm.copyItem(atPath: bundledAv, toPath: dest)
-            var attrs = try fm.attributesOfItem(atPath: dest)
-            attrs[.posixPermissions] = 0o755
-            try fm.setAttributes(attrs, ofItemAtPath: dest)
+            try performCLIInstall()
             let alert = NSAlert()
             alert.messageText = "'av' installed"
             alert.informativeText = "Installed to \(dest)\n\nMake sure ~/.local/bin is in your PATH:\n  export PATH=\"$HOME/.local/bin:$PATH\""
