@@ -107,6 +107,13 @@ struct AnyViewApp {
         windowMenu.addItem(withTitle: "Show All Windows", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
 
+        // Help menu
+        let helpMenuItem = NSMenuItem()
+        mainMenu.addItem(helpMenuItem)
+        let helpMenu = NSMenu(title: "Help")
+        helpMenuItem.submenu = helpMenu
+        helpMenu.addItem(withTitle: "Install 'av' Command Line Tool…", action: #selector(AppDelegate.installCLI(_:)), keyEquivalent: "")
+
         return mainMenu
     }
 }

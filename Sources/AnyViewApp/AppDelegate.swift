@@ -155,6 +155,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    // MARK: - CLI Tool
+
+    @objc func installCLI(_ sender: Any?) {
+        guard let bundledAv = Bundle.main.path(forResource: "av", ofType: nil) else {
+            showError("Bundled 'av' script not found.")
+            return
+        }
+        let localBin = (NSHomeDirectory() as NSString).appendingPathComponent(".local/bin")
+        let dest = (localBin as NSString).appendingPathComponent("av")
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(atPath: localBin, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: dest) { try fm.removeItem(atPath: dest) }
+            try fm.copyItem(atPath: bundledAv, toPath: dest)
+            var attrs = try fm.attributesOfItem(atPath: dest)
+            attrs[.posixPermissions] = 0o755
+            try fm.setAttributes(attrs, ofItemAtPath: dest)
+            let alert = NSAlert()
+            alert.messageText = "'av' installed"
+            alert.informativeText = "Installed to \(dest)\n\nMake sure ~/.local/bin is in your PATH:\n  export PATH=\"$HOME/.local/bin:$PATH\""
+            alert.alertStyle = .informational
+            alert.runModal()
+        } catch {
+            showError("Install failed: \(error.localizedDescription)")
+        }
+    }
+
     private func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "Error"

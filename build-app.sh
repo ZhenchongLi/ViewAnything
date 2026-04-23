@@ -62,6 +62,18 @@ else
     echo "Note: docmod CLI not found — .docx preview will not work without it"
 fi
 
+# Bundle av CLI script
+cp "$SCRIPT_DIR/scripts/av" "$RESOURCES/av"
+chmod +x "$RESOURCES/av"
+
+# Install av to ~/.local/bin/av
+LOCAL_BIN="$HOME/.local/bin"
+mkdir -p "$LOCAL_BIN"
+cp "$RESOURCES/av" "$LOCAL_BIN/av"
+chmod +x "$LOCAL_BIN/av"
+echo "Installed: $LOCAL_BIN/av"
+echo "  (make sure $LOCAL_BIN is in your PATH)"
+
 # Ad-hoc code sign
 codesign --force --deep --sign - "$APP_DIR" 2>/dev/null && echo "Code signed (ad-hoc)" || true
 

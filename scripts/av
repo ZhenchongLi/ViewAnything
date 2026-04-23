@@ -1,0 +1,4 @@
+#!/bin/sh
+# av — open files with AnyView from the command line
+# Usage: av [file ...]
+exec open -b com.anyview.app "$@"
