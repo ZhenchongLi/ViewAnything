@@ -11,7 +11,7 @@ class WebRenderer: NSObject, ViewerRenderer, SupportsFind, WKNavigationDelegate 
     static let texExtensions: Set<String> = ["tex"]
     static let subtitleExtensions: Set<String> = ["srt", "vtt", "ass", "ssa", "sub", "sbv"]
     static let videoExtensions: Set<String> = [
-        "mp4", "mov", "m4v", "webm", "mkv", "avi", "flv", "wmv", "m2ts", "ts", "3gp", "ogv",
+        "mp4", "mov", "m4v", "webm", "m2ts", "ts", "3gp",
     ]
     static let codeExtensions: Set<String> = [
         // Languages

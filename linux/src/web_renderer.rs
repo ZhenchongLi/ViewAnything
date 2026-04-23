@@ -33,7 +33,7 @@ impl WebRenderer {
             // Subtitles
             "srt", "vtt", "ass", "ssa", "sub", "sbv",
             // Video
-            "mp4", "mov", "m4v", "webm", "mkv", "avi", "flv", "wmv", "m2ts", "ts", "3gp", "ogv",
+            "mp4", "mov", "m4v", "webm", "m2ts", "ts", "3gp",
             // Code — languages
             "swift", "cs", "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java",
             "kt", "scala", "c", "h", "cpp", "hpp", "m", "mm", "lua", "r", "pl",
@@ -771,8 +771,7 @@ impl Renderer for WebRenderer {
             "md" | "markdown" => self.load_markdown_file(path),
             "tex" => self.load_tex_file(path),
             "srt" | "vtt" | "ass" | "ssa" | "sub" | "sbv" => self.load_subtitle_file(path),
-            "mp4" | "mov" | "m4v" | "webm" | "mkv" | "avi" | "flv" | "wmv"
-            | "m2ts" | "ts" | "3gp" | "ogv" => self.load_video_file(path),
+            "mp4" | "mov" | "m4v" | "webm" | "m2ts" | "ts" | "3gp" => self.load_video_file(path),
             _ => self.load_code_file(path),
         }
     }
