@@ -29,8 +29,11 @@ mkdir -p "$MACOS"
 # Copy executable
 cp "$EXECUTABLE" "$MACOS/AnyView"
 
-# Copy Info.plist
+# Copy Info.plist and inject git commit hash into version string
 cp "$SCRIPT_DIR/Sources/AnyViewApp/Info.plist" "$CONTENTS/Info.plist"
+GIT_HASH=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BASE_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$CONTENTS/Info.plist")
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${BASE_VER}+${GIT_HASH}" "$CONTENTS/Info.plist"
 
 # Copy icon
 RESOURCES="$CONTENTS/Resources"
