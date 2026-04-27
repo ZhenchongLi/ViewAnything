@@ -40,9 +40,15 @@ RESOURCES="$CONTENTS/Resources"
 mkdir -p "$RESOURCES"
 cp "$SCRIPT_DIR/Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 
-# Copy SPM resource bundle(s)
+# Copy SPM resource bundle(s).
+# Also place a copy at <app>/<bundle-name>.bundle so Bundle.module's
+# `Bundle.main.bundleURL.appendingPathComponent(...)` lookup succeeds
+# without relying on the dev-machine .build path baked at build time.
 for spm_bundle in "$SCRIPT_DIR/$BUILD_DIR"/*.bundle; do
-    [ -d "$spm_bundle" ] && cp -R "$spm_bundle" "$RESOURCES/"
+    [ -d "$spm_bundle" ] || continue
+    cp -R "$spm_bundle" "$RESOURCES/"
+    bundle_name="$(basename "$spm_bundle")"
+    cp -R "$spm_bundle" "$APP_DIR/$bundle_name"
 done
 
 # Bundle docmod CLI if available (for .docx rendering)
